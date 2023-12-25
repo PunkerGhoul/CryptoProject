@@ -182,6 +182,3 @@ archive.zip
 
 # macOS
 .DS_Store
-
-# SQL
-*_dml.sql
