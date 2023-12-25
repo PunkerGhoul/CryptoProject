@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link
+      rel="icon"
+      type="image/png"
+      href="{{ url_for('static', path='login-signup/images/icons/favicon.ico') }}"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Instanciamos los archivos de PyScript desde su mismo Servidor -->
+    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+    <script defer src="https://pyscript.net/latest/pyscript.min.js"></script>
+    <script src="{{ url_for('static', path='dashboard/bower_components/crypto-js/crypto-js.js') }}"></script>
+    <script>
+        var id_usuario = "{{ id_usuario }}";
+    </script>
+    <script type="module" src="{{ url_for('static', path='dashboard/js/numbercode.js') }}"></script>
+    <py-env>
+        - base64
+        - hashlib
+        - pyodide
+    </py-env>
+    <py-script>
+        from functools import reduce
+        import base64 as b64
+        import hashlib
+        from js import createObject
+        from pyodide.ffi import create_proxy
+
+        createObject(create_proxy(globals()), "pyodideGlobals")
+
+        def gen_hash(shared_key):
+            hash_object = hashlib.sha256(shared_key.encode('utf-8'))
+            return hash_object.hexdigest()
+
+        def b64e(s):
+            return b64.b64encode(s.encode()).decode()
+        
+        
+        def get_xor_key(key):
+            return reduce(lambda x, y: x ^ y, key.encode())
+        
+        
+        def xor_cipher(message, key):
+            return bytes([m ^ key[i % len(key)] for i, m in enumerate(message)])
+        
+        
+        def alg(m, xor_key, p, k):
+            temp = p - k ** p * p ** k + p - p ** k
+            return bytearray(
+                (i ^ (temp % (k + 1)) ^ xor_key + (p % k)) % k
+                for i in m
+            )
+        
+        
+        def ghoul_cipher(message, p, k, key):
+            message = bytearray(
+                (m + p ** k + k ** p - p) % k
+                for m in xor_cipher(message.encode(), key.encode())
+            )
+            return alg(message, get_xor_key(key), p, k)
+
+        
+        def cipher_message(message_plain, p, k, key):
+            message_enc = ghoul_cipher(message_plain, p, k, gen_hash(str(key)))
+            return b64.b64encode(message_enc).decode('utf-8')
+    </py-script>
+    <script>    
+        var tag_pyscript = document.getElementsByTagName('py-script');
+        var tag_pyenv = document.getElementsByTagName('py-env');
+        // Hide the tag contents 
+        tag_pyscript[0].style.display = "none";
+        tag_pyenv[0].style.display = "none";
+    </script>
+    <script src="{{ url_for('static', path='dashboard/js/ghoul-cipher.js') }}"></script>
+    <script>
+         function createObject(object, variableName){
+            //Bind a variable whose name is the string variableName
+            // to the object called 'object'
+            let execString = variableName + " = object"
+            console.log("Running '" + execString + "'");
+            eval(execString)
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+
+        document.getElementById("subirArchivoBtn").addEventListener("click", function() {
+            var fileInput = document.getElementById("fileInput");
+            var archivo = fileInput.files[0];
+
+            // Cambiar el texto del botón a "Subiendo archivo..."
+            document.getElementById("subirArchivoBtn").textContent = "Subiendo archivo...";
+
+            var lector = new FileReader();
+
+            lector.onload = function(evento) {
+                var contenidoCifrado = evento.target.result;
+                console.log(contenidoCifrado);
+
+                // Restaurar el texto original del botón
+                document.getElementById("subirArchivoBtn").textContent = "Subir archivo";
+            };
+
+            lector.readAsText(archivo);
+        });
+
+        document.getElementById("enviarMensajeBtn").addEventListener("click", function() {
+            var idUsuarioRemitente = "{{ id_usuario }}";
+            var idUsuarioDestino = document.getElementById("usernameSelect").value;
+            var mensaje = document.getElementById("textAreaExample2").value;
+            const cipher_message = pyodideGlobals.get('cipher_message');
+            const inputElement = document.querySelector('input[name="claveSesion"]');
+            mensaje = cipher_message(mensaje, 104729, 256, inputElement.value);
+
+            // Cambiar el texto del botón a "Enviando mensaje..."
+            document.getElementById("enviarMensajeBtn").textContent = "Enviando mensaje...";
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/send_message", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        var response = JSON.parse(xhr.responseText);
+                        // Manejar la respuesta según sea necesario
+                        Swal.fire(
+                            'Mensaje Enviado!',
+                            document.getElementById("usernameSelect").options[document.getElementById("usernameSelect").selectedIndex].text + ' recibirá tu mensaje pronto!',
+                            'OK'
+                        )
+                        // Restaurar el texto original del botón
+                        document.getElementById("enviarMensajeBtn").textContent = "Enviar mensaje";
+                    } else {
+                        console.error("Error en la solicitud: " + xhr.status);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Oops...',
+                            text: 'Algo ha salido mal!',
+                            footer: 'Vuelve a intentarlo más tarde'
+                        })
+                    }
+                }
+            };
+
+            var params = new URLSearchParams();
+            params.append("id_usuario_remitente", idUsuarioRemitente);
+            params.append("id_usuario_destinatario", idUsuarioDestino);
+            params.append("mensaje_enc", mensaje);
+
+            xhr.send(params.toString());
+        });
+    });
+    </script>
+
+    <title>Cripto - Cifrado</title>
+
+    <!-- Custom fonts for this template-->
+    <link href="{{ url_for('static', path='dashboard/vendor/fontawesome-free/css/all.min.css') }}" rel="stylesheet" type="text/css">
+    <link
+        href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i"
+        rel="stylesheet">
+
+    <!-- Custom styles for this template-->
+    <link href="{{ url_for('static', path='dashboard/css/sb-admin-2.min.css') }}" rel="stylesheet">
+
+</head>
+
+<body id="page-top">
+
+    <body id="page-top">
+
+        <!-- Page Wrapper -->
+        <div id="wrapper">
+    
+            <!-- Sidebar -->
+            <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
+    
+                <!-- Sidebar - Brand -->
+                <a class="sidebar-brand d-flex align-items-center justify-content-center" href="/dashboard/{{ id_usuario }}">
+                    <div class="sidebar-brand-icon rotate-n-15">
+                        <i class="fas fa-laugh-wink"></i>
+                    </div>
+                    <div class="sidebar-brand-text mx-3">Cryptography g<sup>a</sup>mod n</div>
+                </a>
+    
+                <!-- Divider -->
+                <hr class="sidebar-divider my-0">
+    
+                <!-- Nav Item - Dashboard -->
+                <li class="nav-item">
+                    <a class="nav-link" href="/dashboard/{{ id_usuario }}">
+                        <i class="fas fa-fw fa-tachometer-alt"></i>
+                        <span>Diffie-Hellman</span>
+                    </a>
+                </li>
+    
+                <!-- Divider -->
+                <hr class="sidebar-divider">
+    
+                <!-- Heading -->
+                <div class="sidebar-heading">
+                    Interface
+                </div>
+    
+                <!-- Nav Item - Pages Collapse Menu -->
+                <li class="nav-item">
+                    <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapsePages"
+                        aria-expanded="true" aria-controls="collapsePages">
+                        <i class="fas fa-fw fa-folder"></i>
+                        <span>Interface</span>
+                    </a>
+                    <div id="collapsePages" class="collapse" aria-labelledby="headingPages" data-parent="#accordionSidebar">
+                        <div class="bg-white py-2 collapse-inner rounded">
+                            <h6 class="collapse-header">Usuarios Registrados:</h6>
+                            {% for usuario in usuarios %}
+                                {% if usuario['id_usuario'] != id_usuario %}
+                                    <a class="collapse-item" id="{{ usuario['id_usuario'] }}">{{ usuario["nombres"] }} {{ usuario["apellidos"] }}</a>
+                                {% endif %}
+                            {% endfor %}
+                            <div class="collapse-divider"></div>
+                            <h6 class="collapse-header">Bandejas:</h6>
+                            <a class="collapse-item" href="/dashboard/{{ id_usuario }}/Bentrada">Bandeja de Entrada</a>
+                            <a class="collapse-item" href="/dashboard/{{ id_usuario }}/Benviados">Bandeja de Enviados</a>
+                            <a class="collapse-item" href="/dashboard/{{ id_usuario }}/cifrado">Cifrado de mensajes</a>
+                        </div>
+                    </div>
+                </li>
+    
+            </ul>
+            <!-- End of Sidebar -->
+    
+            <!-- Content Wrapper -->
+            <div id="content-wrapper" class="d-flex flex-column">
+    
+                <!-- Main Content -->
+                <div id="content">
+    
+                    <!-- Topbar -->
+                    <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
+    
+                        <!-- Sidebar Toggle (Topbar) -->
+                        <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
+                            <i class="fa fa-bars"></i>
+                        </button>
+    
+                        <!-- Topbar Search -->
+                        <form
+                            class="d-none d-sm-inline-block form-inline mr-auto ml-md-3 my-2 my-md-0 mw-100 navbar-search">
+                            <div class="input-group">
+                                <input type="text" class="form-control bg-light border-0 small" placeholder="Search for..."
+                                    aria-label="Search" aria-describedby="basic-addon2">
+                                <div class="input-group-append">
+                                    <button class="btn btn-primary" type="button">
+                                        <i class="fas fa-search fa-sm"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+    
+                        <!-- Topbar Navbar -->
+                        <ul class="navbar-nav ml-auto">
+    
+                            <!-- Nav Item - Alerts -->
+                            <li class="nav-item dropdown no-arrow mx-1">
+                                <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-bell fa-fw"></i>
+                                    <!-- Counter - Alerts -->
+                                    <span class="badge badge-danger badge-counter">3+</span>
+                                </a>
+                                <!-- Dropdown - Alerts -->
+                                <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated--grow-in"
+                                    aria-labelledby="alertsDropdown">
+                                    <h6 class="dropdown-header">
+                                        Alerts Center
+                                    </h6>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="mr-3">
+                                            <div class="icon-circle bg-primary">
+                                                <i class="fas fa-file-alt text-white"></i>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="small text-gray-500">December 12, 2019</div>
+                                            <span class="font-weight-bold">A new monthly report is ready to download!</span>
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="mr-3">
+                                            <div class="icon-circle bg-success">
+                                                <i class="fas fa-donate text-white"></i>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="small text-gray-500">December 7, 2019</div>
+                                            $290.29 has been deposited into your account!
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="mr-3">
+                                            <div class="icon-circle bg-warning">
+                                                <i class="fas fa-exclamation-triangle text-white"></i>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="small text-gray-500">December 2, 2019</div>
+                                            Spending Alert: We've noticed unusually high spending for your account.
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item text-center small text-gray-500" href="#">Show All Alerts</a>
+                                </div>
+                            </li>
+    
+                            <!-- Nav Item - Messages -->
+                            <li class="nav-item dropdown no-arrow mx-1">
+                                <a class="nav-link dropdown-toggle" href="#" id="messagesDropdown" role="button"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-envelope fa-fw"></i>
+                                    <!-- Counter - Messages -->
+                                    <span class="badge badge-danger badge-counter">7</span>
+                                </a>
+                                <!-- Dropdown - Messages -->
+                                <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated--grow-in"
+                                    aria-labelledby="messagesDropdown">
+                                    <h6 class="dropdown-header">
+                                        Message Center
+                                    </h6>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="dropdown-list-image mr-3">
+                                            <img class="rounded-circle" src="{{ url_for('static', path='dashboard/img/undraw_profile_1.svg') }}"
+                                                alt="...">
+                                            <div class="status-indicator bg-success"></div>
+                                        </div>
+                                        <div class="font-weight-bold">
+                                            <div class="text-truncate">Hi there! I am wondering if you can help me with a
+                                                problem I've been having.</div>
+                                            <div class="small text-gray-500">Emily Fowler · 58m</div>
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="dropdown-list-image mr-3">
+                                            <img class="rounded-circle" src="{{ url_for('static', path='dashboard/img/undraw_profile_2.svg') }}"
+                                                alt="...">
+                                            <div class="status-indicator"></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-truncate">I have the photos that you ordered last month, how
+                                                would you like them sent to you?</div>
+                                            <div class="small text-gray-500">Jae Chun · 1d</div>
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="dropdown-list-image mr-3">
+                                            <img class="rounded-circle" src="{{ url_for('static', path='dashboard/img/undraw_profile_3.svg') }}"
+                                                alt="...">
+                                            <div class="status-indicator bg-warning"></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-truncate">Last month's report looks great, I am very happy with
+                                                the progress so far, keep up the good work!</div>
+                                            <div class="small text-gray-500">Morgan Alvarez · 2d</div>
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item d-flex align-items-center" href="#">
+                                        <div class="dropdown-list-image mr-3">
+                                            <!-- <img class="rounded-circle" src="https://source.unsplash.com/Mv9hjnEUHR4/60x60"
+                                                alt="..."> -->
+                                            <div class="status-indicator bg-success"></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-truncate">Am I a good boy? The reason I ask is because someone
+                                                told me that people say this to all dogs, even if they aren't good...</div>
+                                            <div class="small text-gray-500">Chicken the Dog · 2w</div>
+                                        </div>
+                                    </a>
+                                    <a class="dropdown-item text-center small text-gray-500" href="#">Read More Messages</a>
+                                </div>
+                            </li>
+    
+                            <div class="topbar-divider d-none d-sm-block"></div>
+    
+                            <!-- Nav Item - User Information -->
+                            <li class="nav-item dropdown no-arrow">
+                                <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <span class="mr-2 d-none d-lg-inline text-gray-600 small">{{ nombre_usuario }}</span>
+                                    <img class="img-profile rounded-circle"
+                                        src="{{ url_for('static', path='dashboard/img/undraw_profile.svg') }}">
+                                </a>
+                                <!-- Dropdown - User Information -->
+                                <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in"
+                                    aria-labelledby="userDropdown">
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="#" data-toggle="modal" data-target="#logoutModal">
+                                        <i class="fas fa-sign-out-alt fa-sm fa-fw mr-2 text-gray-400"></i>
+                                        Logout
+                                    </a>
+                                </div>
+                            </li>
+    
+                        </ul>
+    
+                    </nav>
+                    <!-- End of Topbar -->
+    
+                    <!-- Begin Page Content -->
+                    <div class="container-fluid">
+    
+                        <!-- 404 Error Text -->
+                        <div class="text-center">
+                                <h1 class="h3 mb-0 text-gray-800">Cifrado de Mensajes</h1>
+                        <div class="text-center d-none d-md-inline">
+                                <button class="rounded-circle border-0" id="sidebarToggle"></button>
+                        </div>
+                        </div>
+                        <div class="container">
+                            <div class="wrap-input100 validate-input" data-validate="Username is required">
+                                <div class="d-flex align-items-center">
+                                  <span class="label-input100">Destinatario <br></span>
+                                  <select class="input100" name="username" id="usernameSelect">
+                                    {% for usuario in usuarios %}
+                                        {% if usuario.id_usuario != id_usuario %}
+                                            <option value="{{ usuario.id_usuario }}">{{ usuario.nombres }} {{ usuario.apellidos }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="wrap-input100 validate-input" data-validate="Password is required">
+                                <span class="label-input100">Esta es tu Clave de Sesión</span>
+                                <input class="input100" type="text" name="claveSesion" placeholder="Clave de sesión" readonly>
+                                <span class="focus-input100" data-symbol="&#xf190;"></span>
+                                <div class="text-center d-none d-md-inline">
+                                    <button class="rounded-circle border-0" id="sidebarToggle"></button>
+                                </div>
+                            <li class="bg-white mb-3">
+                                    <div class="form-outline">
+                                      <label class="form-label" for="textAreaExample2">Escribe aquí el mensaje que quieres cifrar</label>
+                                      <textarea class="form-control" id="textAreaExample2" rows="3"></textarea>
+                                    </div>
+                            </li>
+                            <input type="file" class="form-control" id="fileInput" aria-describedby="fileHelp">
+                            <small id="fileHelp" class="form-text text-muted">Sube el archivo que quieres cifrar</small>
+                            <br>
+                            <button type="button" class="btn btn-info btn-rounded float-end" id="subirArchivoBtn">Subir texto cifrado</button>
+                            <br>
+                            </div>
+                            <div class="text-center d-none d-md-inline">
+                              <button class="rounded-circle border-0" id="sidebarToggle"></button>
+                            </div>
+                                <div class="row-center">
+                                  <button type="button" class="btn btn-info btn-rounded float-end" id="enviarMensajeBtn">Enviar Mensaje</button>
+                                </div>
+                                </ul>
+                            </div>
+                            <br>
+                            <div class="text-center d-none d-md-inline">
+                            <a href="/dashboard/{{ id_usuario }}">&larr; Back to Diffie-Hellman</a>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+        <!-- Footer -->
+        <footer class="sticky-footer bg-white">
+            <div class="container my-auto">
+                <div class="copyright text-center my-auto">
+                    <span>Cript Project implement Algorithm Diffie-Hellman <br>
+                        Copyright &copy; Your Website 2023</span>
+                </div>
+            </div>
+        </footer>
+        <!-- Scroll to Top Button-->
+        <a class="scroll-to-top rounded" href="#page-top">
+            <i class="fas fa-angle-up"></i>
+        </a>
+    
+        <!-- Logout Modal-->
+        <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLabel">Ready to Leave?</h5>
+                        <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">×</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">Select "Logout" below if you are ready to end your current session.</div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" type="button" data-dismiss="modal">Cancel</button>
+                        <form action="/api/logout" method="POST">
+                            <button class="btn btn-primary" type="submit">Logout</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bootstrap core JavaScript-->
+        <script src="{{ url_for('static', path='dashboard/vendor/jquery/jquery.min.js') }}"></script>
+        <script src="{{ url_for('static', path='dashboard/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    
+        <!-- Core plugin JavaScript-->
+        <script src="{{ url_for('static', path='dashboard/vendor/jquery-easing/jquery.easing.min.js') }}"></script>
+    
+        <!-- Custom scripts for all pages-->
+        <script src="{{ url_for('static', path='dashboard/js/sb-admin-2.min.js') }}"></script>
+    
+</body>
+
+</html>

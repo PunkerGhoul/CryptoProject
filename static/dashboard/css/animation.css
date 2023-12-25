@@ -1,0 +1,30 @@
+#animation-container {
+  position: relative;
+  width: 350px;
+  height: 200px;
+  margin: 25px auto;
+  border: 1px solid #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden; /* Agregamos overflow hidden para evitar que los emojis se salgan del contenedor */
+}
+
+#text-animation {
+  font-size: 24px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: all 1s ease;
+}
+
+#letter-animated {
+  font-size: 19px; /* Aumenté el tamaño para que se vea mejor */
+  position: absolute;
+  top: 2%;
+  left: 15%;
+  /*transform: translate(-50%, -50%);*/
+  transition: all 1s ease;
+  font-weight: bold; /* Agregué negrita para resaltar la letra */
+}

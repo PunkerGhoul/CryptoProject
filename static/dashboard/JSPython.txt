@@ -1,0 +1,24 @@
+* * * * * * * * * * * * * * * *
+De acuerdo con el archivo "numbercode.js" que se encuentra en el folder "js/demo/numbercode.js"
+Este sería el codigo para la implementación en Python:
+************************************
+import execjs
+
+# Carga el código JavaScript desde el archivo
+with open('random_number.js', 'r') as file:
+    js_code = file.read()
+
+# Ejecuta el código JavaScript
+context = execjs.compile(js_code)
+random_number = context.call('generateSecureRandomNumber')
+
+print(random_number)
+
+* * ** * ** * * **  * ** ** * 
+En este ejemplo, se ha guardado el código JavaScript en un archivo llamado 
+random_number.js. Luego, se utiliza la biblioteca PyExecJS para cargar y ejecutar el código JavaScript. 
+Finalmente, se llama a la función generateSecureRandomNumber desde Python para ver el resultado.
+
+Se debe instalar PyExecJS en Python antes de ejecutar este código:
+
+pip install PyExecJS

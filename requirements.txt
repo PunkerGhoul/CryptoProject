@@ -1,0 +1,7 @@
+mysql-connector
+uvicorn[standard]
+fastapi
+python-multipart
+fastapi-sessions
+bcrypt
+jinja2
